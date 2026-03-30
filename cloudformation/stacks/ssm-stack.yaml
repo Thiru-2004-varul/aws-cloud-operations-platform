@@ -1,0 +1,191 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: SSM Stack - Session Manager, Patch Manager, Maintenance Windows. aws-cloud-operations-platform
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: cloud-ops
+
+  Environment:
+    Type: String
+    AllowedValues: [dev, prod]
+    Default: dev
+
+Resources:
+
+  PatchBaseline:
+    Type: AWS::SSM::PatchBaseline
+    Properties:
+      Name: !Sub "${ProjectName}-${Environment}-ubuntu-patch-baseline"
+      OperatingSystem: UBUNTU
+      ApprovalRules:
+        PatchRules:
+          - PatchFilterGroup:
+              PatchFilters:
+                - Key: PRIORITY
+                  Values:
+                    - Required
+                    - Important
+                    - Standard
+            ApproveAfterDays: 7
+            EnableNonSecurity: true
+      Description: Patch baseline for Ubuntu EC2 instances
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+  MaintenanceWindow:
+    Type: AWS::SSM::MaintenanceWindow
+    Properties:
+      Name: !Sub "${ProjectName}-${Environment}-maintenance-window"
+      Description: Weekly patching window - Sunday 2AM IST
+      Schedule: cron(30 20 ? * SAT *)
+      Duration: 2
+      Cutoff: 1
+      AllowUnassociatedTargets: false
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+  MaintenanceWindowTarget:
+    Type: AWS::SSM::MaintenanceWindowTarget
+    Properties:
+      WindowId: !Ref MaintenanceWindow
+      ResourceType: INSTANCE
+      Targets:
+        - Key: tag:Project
+          Values:
+            - !Ref ProjectName
+        - Key: tag:Environment
+          Values:
+            - !Ref Environment
+      Name: !Sub "${ProjectName}-${Environment}-patch-targets"
+
+  MaintenanceWindowTask:
+    Type: AWS::SSM::MaintenanceWindowTask
+    Properties:
+      WindowId: !Ref MaintenanceWindow
+      Targets:
+        - Key: WindowTargetIds
+          Values:
+            - !Ref MaintenanceWindowTarget
+      TaskArn: AWS-RunPatchBaseline
+      TaskType: RUN_COMMAND
+      Priority: 1
+      MaxConcurrency: "1"
+      MaxErrors: "1"
+      TaskInvocationParameters:
+        MaintenanceWindowRunCommandParameters:
+          Parameters:
+            Operation:
+              - Install
+          TimeoutSeconds: 600
+
+  InventoryAssociation:
+    Type: AWS::SSM::Association
+    Properties:
+      Name: AWS-GatherSoftwareInventory
+      AssociationName: !Sub "${ProjectName}-${Environment}-inventory"
+      Targets:
+        - Key: tag:Project
+          Values:
+            - !Ref ProjectName
+      ScheduleExpression: rate(1 day)
+      Parameters:
+        applications:
+          - Enabled
+        awsComponents:
+          - Enabled
+        networkConfig:
+          - Enabled
+        instanceDetailedInformation:
+          - Enabled
+        services:
+          - Enabled
+        customInventory:
+          - Enabled
+
+  PatchAssociation:
+    Type: AWS::SSM::Association
+    Properties:
+      Name: AWS-RunPatchBaseline
+      AssociationName: !Sub "${ProjectName}-${Environment}-patch-association"
+      Targets:
+        - Key: tag:Project
+          Values:
+            - !Ref ProjectName
+      ScheduleExpression: rate(7 days)
+      Parameters:
+        Operation:
+          - Scan
+      WaitForSuccessTimeoutSeconds: 300
+
+  SessionLogsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${ProjectName}-${Environment}-session-logs-${AWS::AccountId}"
+      VersioningConfiguration:
+        Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldLogs
+            Status: Enabled
+            ExpirationInDays: 90
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+  SessionLogsCloudWatchGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/ssm/${ProjectName}-${Environment}/sessions"
+      RetentionInDays: 30
+
+  RunCommandLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/ssm/${ProjectName}-${Environment}/run-command"
+      RetentionInDays: 30
+
+  CloudWatchAgentAssociation:
+    Type: AWS::SSM::Association
+    Properties:
+      Name: AWS-ConfigureAWSPackage
+      AssociationName: !Sub "${ProjectName}-${Environment}-cloudwatch-agent"
+      Targets:
+        - Key: tag:Project
+          Values:
+            - !Ref ProjectName
+      Parameters:
+        action:
+          - Install
+        name:
+          - AmazonCloudWatchAgent
+      WaitForSuccessTimeoutSeconds: 300
+
+Outputs:
+  PatchBaselineId:
+    Value: !Ref PatchBaseline
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-PatchBaselineId"
+
+  MaintenanceWindowId:
+    Value: !Ref MaintenanceWindow
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-MaintenanceWindowId"
+
+  SessionLogsBucketName:
+    Value: !Ref SessionLogsBucket
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-SessionLogsBucketName"
