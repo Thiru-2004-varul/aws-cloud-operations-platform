@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: Compute Stack - ALB, Ubuntu EC2 ASG, Windows EC2, Auto Scaling. aws-cloud-operations-platform
+Description: Compute Stack - ALB, Ubuntu EC2 Auto Scaling Group. aws-cloud-operations-platform
 
 Parameters:
   ProjectName:
@@ -18,10 +18,6 @@ Parameters:
   UbuntuAMI:
     Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
     Default: /aws/service/canonical/ubuntu/server/22.04/stable/current/amd64/hvm/ebs-gp2/ami-id
-
-  WindowsAMI:
-    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
-    Default: /aws/service/ami-windows-latest/Windows_Server-2022-English-Full-Base
 
 Resources:
 
@@ -103,15 +99,24 @@ Resources:
 
             @app.route('/health')
             def health():
-                return jsonify({"status": "healthy", "uptime_seconds": int(time.time() - start_time)}), 200
+                return jsonify({
+                    "status": "healthy",
+                    "uptime_seconds": int(time.time() - start_time)
+                }), 200
 
             @app.route('/metrics')
             def metrics():
-                return jsonify({"uptime_seconds": int(time.time() - start_time), "status": "running"}), 200
+                return jsonify({
+                    "uptime_seconds": int(time.time() - start_time),
+                    "status": "running"
+                }), 200
 
             @app.route('/')
             def index():
-                return jsonify({"message": "aws-cloud-operations-platform", "environment": "${Environment}"}), 200
+                return jsonify({
+                    "message": "aws-cloud-operations-platform",
+                    "environment": "${Environment}"
+                }), 200
 
             if __name__ == '__main__':
                 app.run(host='0.0.0.0', port=80)
@@ -169,35 +174,6 @@ Resources:
         Count: 2
         Timeout: PT15M
 
-  WindowsEC2:
-    Type: AWS::EC2::Instance
-    Properties:
-      ImageId: !Ref WindowsAMI
-      InstanceType: t3.micro
-      IamInstanceProfile: !ImportValue
-        Fn::Sub: "${ProjectName}-${Environment}-EC2InstanceProfileArn"
-      SubnetId: !ImportValue
-        Fn::Sub: "${ProjectName}-${Environment}-PrivateSubnet1Id"
-      SecurityGroupIds:
-        - !ImportValue
-          Fn::Sub: "${ProjectName}-${Environment}-WindowsEC2SecurityGroupId"
-      UserData:
-        Fn::Base64: |
-          <powershell>
-          Install-WindowsFeature -Name Web-Server -IncludeManagementTools
-          Start-Service W3SVC
-          Set-Service W3SVC -StartupType Automatic
-          </powershell>
-      Tags:
-        - Key: Name
-          Value: !Sub "${ProjectName}-${Environment}-windows-ec2"
-        - Key: Project
-          Value: !Ref ProjectName
-        - Key: Environment
-          Value: !Ref Environment
-        - Key: OS
-          Value: Windows
-
   ScaleOutPolicy:
     Type: AWS::AutoScaling::ScalingPolicy
     Properties:
@@ -223,11 +199,6 @@ Outputs:
     Value: !Ref ALBTargetGroup
     Export:
       Name: !Sub "${ProjectName}-${Environment}-ALBTargetGroupArn"
-
-  WindowsEC2Id:
-    Value: !Ref WindowsEC2
-    Export:
-      Name: !Sub "${ProjectName}-${Environment}-WindowsEC2Id"
 
   UbuntuASGName:
     Value: !Ref UbuntuAutoScalingGroup

@@ -97,25 +97,7 @@ Resources:
         - Key: Name
           Value: !Sub "${ProjectName}-${Environment}-linux-ec2-sg"
 
-  WindowsEC2SecurityGroup:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-      GroupName: !Sub "${ProjectName}-${Environment}-windows-ec2-sg"
-      GroupDescription: Windows Server - SSM access only no RDP
-      VpcId: !ImportValue
-        Fn::Sub: "${ProjectName}-${Environment}-VpcId"
-      SecurityGroupIngress:
-        - IpProtocol: tcp
-          FromPort: 80
-          ToPort: 80
-          SourceSecurityGroupId: !Ref ALBSecurityGroup
-      SecurityGroupEgress:
-        - IpProtocol: -1
-          CidrIp: "0.0.0.0/0"
-      Tags:
-        - Key: Name
-          Value: !Sub "${ProjectName}-${Environment}-windows-ec2-sg"
-
+ 
   RDSSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -157,10 +139,6 @@ Outputs:
     Export:
       Name: !Sub "${ProjectName}-${Environment}-LinuxEC2SecurityGroupId"
 
-  WindowsEC2SecurityGroupId:
-    Value: !Ref WindowsEC2SecurityGroup
-    Export:
-      Name: !Sub "${ProjectName}-${Environment}-WindowsEC2SecurityGroupId"
 
   RDSSecurityGroupId:
     Value: !Ref RDSSecurityGroup
