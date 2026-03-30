@@ -1,0 +1,66 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Root Stack - deploys all nested stacks in order. aws-cloud-operations-platform
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: cloud-ops
+
+  Environment:
+    Type: String
+    AllowedValues: [dev, prod]
+    Default: dev
+
+  TemplateBucket:
+    Type: String
+    Description: S3 bucket name where nested templates are uploaded
+
+Resources:
+
+  NetworkStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub "https://${TemplateBucket}.s3.ap-south-1.amazonaws.com/stacks/network-stack.yaml"
+      Parameters:
+        ProjectName: !Ref ProjectName
+        Environment: !Ref Environment
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+
+  SecurityStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: NetworkStack
+    Properties:
+      TemplateURL: !Sub "https://${TemplateBucket}.s3.ap-south-1.amazonaws.com/stacks/security-stack.yaml"
+      Parameters:
+        ProjectName: !Ref ProjectName
+        Environment: !Ref Environment
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+
+  ComputeStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: SecurityStack
+    Properties:
+      TemplateURL: !Sub "https://${TemplateBucket}.s3.ap-south-1.amazonaws.com/stacks/compute-stack.yaml"
+      Parameters:
+        ProjectName: !Ref ProjectName
+        Environment: !Ref Environment
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+
+Outputs:
+  ALBDNSName:
+    Value: !GetAtt ComputeStack.Outputs.ALBDNSName
+
+  NetworkStackId:
+    Value: !Ref NetworkStack
+
+  SecurityStackId:
+    Value: !Ref SecurityStack
+
+  ComputeStackId:
+    Value: !Ref ComputeStack

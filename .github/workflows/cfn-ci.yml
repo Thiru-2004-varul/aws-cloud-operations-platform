@@ -1,0 +1,33 @@
+name: CloudFormation CI
+
+on:
+  push:
+    paths:
+      - 'cloudformation/**'
+  pull_request:
+    paths:
+      - 'cloudformation/**'
+
+jobs:
+  validate:
+    name: Validate CloudFormation Templates
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-south-1
+
+      - run: pip install cfn-lint
+
+      - run: cfn-lint cloudformation/stacks/network-stack.yaml
+      - run: cfn-lint cloudformation/stacks/security-stack.yaml
+      - run: cfn-lint cloudformation/stacks/compute-stack.yaml
+
+      - run: aws cloudformation validate-template --template-body file://cloudformation/stacks/network-stack.yaml
+      - run: aws cloudformation validate-template --template-body file://cloudformation/stacks/security-stack.yaml
+      - run: aws cloudformation validate-template --template-body file://cloudformation/stacks/compute-stack.yaml

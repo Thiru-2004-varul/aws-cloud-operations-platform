@@ -1,13 +1,9 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: >
-  Network Foundation Stack — VPC, public/private subnets across 2 AZs,
-  Internet Gateway, NAT Gateway, and route tables.
-  Part of: aws-cloud-operations-platform
+Description: Network Foundation Stack - VPC, subnets, IGW, NAT Gateway. aws-cloud-operations-platform
 
 Parameters:
   ProjectName:
     Type: String
-    Description: Used to prefix all resource names
     Default: cloud-ops
 
   Environment:
@@ -18,7 +14,6 @@ Parameters:
   VpcCidr:
     Type: String
     Default: "10.0.0.0/16"
-    Description: CIDR block for the entire VPC
 
   PublicSubnet1Cidr:
     Type: String
@@ -192,43 +187,36 @@ Resources:
 
 Outputs:
   VpcId:
-    Description: VPC ID
     Value: !Ref VPC
     Export:
       Name: !Sub "${ProjectName}-${Environment}-VpcId"
 
   VpcCidr:
-    Description: VPC CIDR block
     Value: !GetAtt VPC.CidrBlock
     Export:
       Name: !Sub "${ProjectName}-${Environment}-VpcCidr"
 
   PublicSubnet1Id:
-    Description: Public Subnet 1 ID
     Value: !Ref PublicSubnet1
     Export:
       Name: !Sub "${ProjectName}-${Environment}-PublicSubnet1Id"
 
   PublicSubnet2Id:
-    Description: Public Subnet 2 ID
     Value: !Ref PublicSubnet2
     Export:
       Name: !Sub "${ProjectName}-${Environment}-PublicSubnet2Id"
 
   PrivateSubnet1Id:
-    Description: Private Subnet 1 ID
     Value: !Ref PrivateSubnet1
     Export:
       Name: !Sub "${ProjectName}-${Environment}-PrivateSubnet1Id"
 
   PrivateSubnet2Id:
-    Description: Private Subnet 2 ID
     Value: !Ref PrivateSubnet2
     Export:
       Name: !Sub "${ProjectName}-${Environment}-PrivateSubnet2Id"
 
   NATGatewayId:
-    Description: NAT Gateway ID
     Value: !Ref NATGateway
     Export:
       Name: !Sub "${ProjectName}-${Environment}-NATGatewayId"
