@@ -111,7 +111,7 @@ Resources:
 
             @app.route('/')
             def index():
-                return jsonify({"message": "aws-cloud-operations-platform", "environment": "dev"}), 200
+                return jsonify({"message": "aws-cloud-operations-platform", "environment": "${Environment}"}), 200
 
             if __name__ == '__main__':
                 app.run(host='0.0.0.0', port=80)
@@ -182,7 +182,7 @@ Resources:
         - !ImportValue
           Fn::Sub: "${ProjectName}-${Environment}-WindowsEC2SecurityGroupId"
       UserData:
-        Fn::Base64: !Sub |
+        Fn::Base64: |
           <powershell>
           Install-WindowsFeature -Name Web-Server -IncludeManagementTools
           Start-Service W3SVC
