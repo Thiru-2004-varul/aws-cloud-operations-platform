@@ -1,0 +1,187 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Security Stack — IAM roles, instance profiles, and security groups
+  for ALB, EC2 (Linux), EC2 (Windows), and RDS tiers.
+  Part of: aws-cloud-operations-platform
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: cloud-ops
+
+  Environment:
+    Type: String
+    AllowedValues: [dev, prod]
+    Default: dev
+
+Resources:
+
+  EC2Role:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ProjectName}-${Environment}-ec2-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+        - arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
+        - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
+      Policies:
+        - PolicyName: SecretsManagerReadPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                  - secretsmanager:DescribeSecret
+                Resource: !Sub "arn:aws:secretsmanager:ap-south-1:*:secret:${ProjectName}/*"
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+  EC2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: !Sub "${ProjectName}-${Environment}-ec2-profile"
+      Roles:
+        - !Ref EC2Role
+
+  ALBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub "${ProjectName}-${Environment}-alb-sg"
+      GroupDescription: Allow HTTP/HTTPS inbound to ALB from internet
+      VpcId: !ImportValue
+        Fn::Sub: "${ProjectName}-${Environment}-VpcId"
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: "0.0.0.0/0"
+          Description: HTTP from internet
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: "0.0.0.0/0"
+          Description: HTTPS from internet
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: "0.0.0.0/0"
+          Description: Allow all outbound
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-alb-sg"
+
+  LinuxEC2SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub "${ProjectName}-${Environment}-linux-ec2-sg"
+      GroupDescription: Allow traffic only from ALB, no direct SSH
+      VpcId: !ImportValue
+        Fn::Sub: "${ProjectName}-${Environment}-VpcId"
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 8080
+          ToPort: 8080
+          SourceSecurityGroupId: !Ref ALBSecurityGroup
+          Description: App traffic from ALB only
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          SourceSecurityGroupId: !Ref ALBSecurityGroup
+          Description: HTTP from ALB only
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: "0.0.0.0/0"
+          Description: Allow all outbound
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-linux-ec2-sg"
+
+  WindowsEC2SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub "${ProjectName}-${Environment}-windows-ec2-sg"
+      GroupDescription: Windows Server - SSM access only, no RDP
+      VpcId: !ImportValue
+        Fn::Sub: "${ProjectName}-${Environment}-VpcId"
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          SourceSecurityGroupId: !Ref ALBSecurityGroup
+          Description: IIS traffic from ALB only
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: "0.0.0.0/0"
+          Description: Allow all outbound
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-windows-ec2-sg"
+
+  RDSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub "${ProjectName}-${Environment}-rds-sg"
+      GroupDescription: Allow MySQL/Postgres only from EC2 security group
+      VpcId: !ImportValue
+        Fn::Sub: "${ProjectName}-${Environment}-VpcId"
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          SourceSecurityGroupId: !Ref LinuxEC2SecurityGroup
+          Description: MySQL from Linux EC2 only
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          SourceSecurityGroupId: !Ref LinuxEC2SecurityGroup
+          Description: Postgres from Linux EC2 only
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-rds-sg"
+
+Outputs:
+  EC2InstanceProfileArn:
+    Description: Instance profile ARN to attach to EC2
+    Value: !GetAtt EC2InstanceProfile.Arn
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-EC2InstanceProfileArn"
+
+  EC2RoleArn:
+    Description: EC2 IAM Role ARN
+    Value: !GetAtt EC2Role.Arn
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-EC2RoleArn"
+
+  ALBSecurityGroupId:
+    Description: ALB Security Group ID
+    Value: !Ref ALBSecurityGroup
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-ALBSecurityGroupId"
+
+  LinuxEC2SecurityGroupId:
+    Description: Linux EC2 Security Group ID
+    Value: !Ref LinuxEC2SecurityGroup
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-LinuxEC2SecurityGroupId"
+
+  WindowsEC2SecurityGroupId:
+    Description: Windows EC2 Security Group ID
+    Value: !Ref WindowsEC2SecurityGroup
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-WindowsEC2SecurityGroupId"
+
+  RDSSecurityGroupId:
+    Description: RDS Security Group ID
+    Value: !Ref RDSSecurityGroup
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-RDSSecurityGroupId"
