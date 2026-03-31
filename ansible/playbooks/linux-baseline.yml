@@ -1,0 +1,27 @@
+- name: Apply Linux baseline configuration to all Ubuntu servers
+  hosts: ubuntu_servers
+  become: true
+  gather_facts: true
+
+  pre_tasks:
+    - name: Print target host info
+      debug:
+        msg: "Configuring {{ inventory_hostname }} — {{ ansible_distribution }} {{ ansible_distribution_version }}"
+
+  roles:
+    - common
+    - ssm-agent
+    - cloudwatch-agent
+    - app-deploy
+
+  post_tasks:
+    - name: Verify all services running
+      service_facts:
+
+    - name: Print configuration summary
+      debug:
+        msg:
+          - "Hostname: {{ ansible_hostname }}"
+          - "OS: {{ ansible_distribution }} {{ ansible_distribution_version }}"
+          - "IP: {{ ansible_default_ipv4.address }}"
+          - "Baseline applied successfully"
