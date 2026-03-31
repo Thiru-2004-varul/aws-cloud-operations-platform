@@ -21,7 +21,7 @@
     - name: Print configuration summary
       debug:
         msg:
-          - "Hostname: {{ ansible_hostname }}"
-          - "OS: {{ ansible_distribution }} {{ ansible_distribution_version }}"
-          - "IP: {{ ansible_default_ipv4.address }}"
+          - "Hostname : {{ ansible_hostname }}"
+          - "OS       : {{ ansible_distribution }} {{ ansible_distribution_version }}"
+          - "IP       : {{ ansible_default_ipv4.address }}"
           - "Baseline applied successfully"

@@ -40,7 +40,21 @@ jobs:
           pip install ansible boto3 botocore
           ansible-galaxy collection install amazon.aws community.aws
 
-      - name: Run baseline playbook via SSM
+      - name: Check if EC2 instances are running
+        id: check_hosts
+        run: |
+          cd ansible
+          HOST_COUNT=$(ansible-inventory -i inventory/aws_ec2.yaml --list 2>/dev/null | python3 -c "
+          import json, sys
+          data = json.load(sys.stdin)
+          hosts = data.get('_meta', {}).get('hostvars', {})
+          print(len(hosts))
+          ")
+          echo "host_count=$HOST_COUNT" >> $GITHUB_OUTPUT
+          echo "Found $HOST_COUNT hosts"
+
+      - name: Run baseline playbook
+        if: steps.check_hosts.outputs.host_count != '0'
         run: |
           cd ansible
           ansible-playbook playbooks/linux-baseline.yml \
@@ -48,3 +62,7 @@ jobs:
             -e "ansible_connection=aws_ssm" \
             -e "ansible_aws_ssm_region=ap-south-1" \
             -v
+
+      - name: Skip - no EC2 instances running
+        if: steps.check_hosts.outputs.host_count == '0'
+        run: echo "No EC2 instances running. Deploy stacks first then re-run this workflow."
