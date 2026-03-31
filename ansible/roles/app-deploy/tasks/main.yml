@@ -1,0 +1,72 @@
+- name: Install Python and pip
+  apt:
+    name:
+      - python3
+      - python3-pip
+    state: present
+
+- name: Install Flask app dependencies
+  pip:
+    name:
+      - flask
+      - boto3
+      - hvac
+    state: present
+
+- name: Create app directory
+  file:
+    path: /opt/app
+    state: directory
+    mode: "0755"
+
+- name: Copy Flask app from repo
+  copy:
+    src: ../../../../app/app.py
+    dest: /opt/app/app.py
+    mode: "0644"
+
+- name: Create systemd service for Flask app
+  copy:
+    dest: /etc/systemd/system/flask-app.service
+    content: |
+      [Unit]
+      Description=Flask Cloud Ops Application
+      After=network.target
+
+      [Service]
+      User=ubuntu
+      WorkingDirectory=/opt/app
+      ExecStart=/usr/bin/python3 /opt/app/app.py
+      Restart=always
+      RestartSec=5
+      Environment=ENVIRONMENT=dev
+
+      [Install]
+      WantedBy=multi-user.target
+    mode: "0644"
+
+- name: Reload systemd daemon
+  systemd:
+    daemon_reload: yes
+
+- name: Enable and start Flask app service
+  service:
+    name: flask-app
+    state: started
+    enabled: yes
+
+- name: Wait for app to start
+  wait_for:
+    port: 80
+    timeout: 30
+
+- name: Verify app health endpoint
+  uri:
+    url: http://localhost:80/health
+    method: GET
+    status_code: 200
+  register: health_check
+
+- name: Print health check result
+  debug:
+    msg: "App health: {{ health_check.json }}"

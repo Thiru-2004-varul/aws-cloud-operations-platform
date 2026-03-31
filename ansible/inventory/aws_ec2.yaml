@@ -1,0 +1,19 @@
+plugin: aws_ec2
+regions:
+  - ap-south-1
+
+filters:
+  tag:Project: cloud-ops
+  instance-state-name: running
+
+keyed_groups:
+  - key: tags.Environment
+    prefix: env
+  - key: tags.OS
+    prefix: os
+
+groups:
+  ubuntu_servers: "tags.OS == 'Ubuntu'"
+
+compose:
+  ansible_host: private_ip_address

@@ -1,0 +1,22 @@
+- name: Check SSM agent status
+  service:
+    name: snap.amazon-ssm-agent.amazon-ssm-agent
+    state: started
+    enabled: yes
+  ignore_errors: true
+
+- name: Check SSM agent status (non-snap)
+  service:
+    name: amazon-ssm-agent
+    state: started
+    enabled: yes
+  ignore_errors: true
+
+- name: Verify SSM agent is running
+  shell: systemctl is-active snap.amazon-ssm-agent.amazon-ssm-agent || systemctl is-active amazon-ssm-agent
+  register: ssm_status
+  changed_when: false
+
+- name: Print SSM agent status
+  debug:
+    msg: "SSM Agent status: {{ ssm_status.stdout }}"
