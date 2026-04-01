@@ -1,17 +1,21 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: Backup and DR Stack - AWS Backup plans, vaults, recovery points. aws-cloud-operations-platform
+Description: Backup and DR Stack - aws-cloud-operations-platform
 
 Parameters:
   ProjectName:
     Type: String
     Default: cloud-ops
-
   Environment:
     Type: String
     AllowedValues: [dev, prod]
     Default: dev
 
 Resources:
+
+  SNSTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub "${ProjectName}-${Environment}-alerts"
 
   BackupVault:
     Type: AWS::Backup::BackupVault
@@ -33,53 +37,11 @@ Resources:
         - arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForBackup
         - arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForRestores
 
-  DailyBackupPlan:
-    Type: AWS::Backup::BackupPlan
-    Properties:
-      BackupPlan:
-        BackupPlanName: !Sub "${ProjectName}-${Environment}-daily-backup"
-        BackupPlanRule:
-          - RuleName: DailyEC2Backup
-            TargetBackupVaultName: !Ref BackupVault
-            ScheduleExpression: cron(0 1 * * ? *)
-            StartWindowMinutes: 60
-            CompletionWindowMinutes: 180
-            Lifecycle:
-              MoveToColdStorageAfterDays: 7
-              DeleteAfterDays: 97
-          - RuleName: WeeklyEC2Backup
-            TargetBackupVaultName: !Ref BackupVault
-            ScheduleExpression: cron(0 2 ? * SUN *)
-            StartWindowMinutes: 60
-            CompletionWindowMinutes: 180
-            Lifecycle:
-              DeleteAfterDays: 90
-
-  BackupSelection:
-    Type: AWS::Backup::BackupSelection
-    Properties:
-      BackupPlanId: !Ref DailyBackupPlan
-      BackupSelection:
-        SelectionName: !Sub "${ProjectName}-${Environment}-ec2-selection"
-        IamRoleArn: !GetAtt BackupRole.Arn
-        ListOfTags:
-          - ConditionType: STRINGEQUALS
-            ConditionKey: Project
-            ConditionValue: !Ref ProjectName
-          - ConditionType: STRINGEQUALS
-            ConditionKey: Environment
-            ConditionValue: !Ref Environment
-
   BackupLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
       LogGroupName: !Sub "/aws/backup/${ProjectName}-${Environment}"
       RetentionInDays: 30
-
-  SNSTopic:
-    Type: AWS::SNS::Topic
-    Properties:
-      TopicName: !Sub "${ProjectName}-${Environment}-alerts"
 
   EC2RecoveryAlarm:
     Type: AWS::CloudWatch::Alarm
@@ -101,7 +63,7 @@ Resources:
     Type: AWS::CloudWatch::Alarm
     Properties:
       AlarmName: !Sub "${ProjectName}-${Environment}-high-cpu"
-      AlarmDescription: CPU utilization above 80 percent for 5 minutes
+      AlarmDescription: CPU utilization above 80 percent
       MetricName: CPUUtilization
       Namespace: AWS/EC2
       Statistic: Average
@@ -126,10 +88,6 @@ Resources:
       Threshold: 10
       ComparisonOperator: GreaterThanOrEqualToThreshold
       TreatMissingData: notBreaching
-      Dimensions:
-        - Name: LoadBalancer
-          Value: !ImportValue
-            Fn::Sub: "${ProjectName}-${Environment}-ALBArn"
       AlarmActions:
         - !Ref SNSTopic
 
@@ -138,11 +96,6 @@ Outputs:
     Value: !GetAtt BackupVault.BackupVaultArn
     Export:
       Name: !Sub "${ProjectName}-${Environment}-BackupVaultArn"
-
-  BackupPlanId:
-    Value: !Ref DailyBackupPlan
-    Export:
-      Name: !Sub "${ProjectName}-${Environment}-BackupPlanId"
 
   SNSTopicArn:
     Value: !Ref SNSTopic
