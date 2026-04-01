@@ -1,0 +1,140 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Monitoring Stack - CloudWatch dashboards, log groups, metric filters. aws-cloud-operations-platform
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: cloud-ops
+
+  Environment:
+    Type: String
+    AllowedValues: [dev, prod]
+    Default: dev
+
+Resources:
+
+  AppLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/ec2/${ProjectName}-${Environment}/app"
+      RetentionInDays: 30
+
+  SyslogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/ec2/${ProjectName}-${Environment}/syslog"
+      RetentionInDays: 30
+
+  AuthLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/ec2/${ProjectName}-${Environment}/auth"
+      RetentionInDays: 30
+
+  FirewallLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/ec2/${ProjectName}-${Environment}/firewall"
+      RetentionInDays: 30
+
+  AppErrorMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref AppLogGroup
+      FilterPattern: "[timestamp, level=ERROR, ...]"
+      MetricTransformations:
+        - MetricName: AppErrorCount
+          MetricNamespace: !Sub "${ProjectName}/${Environment}"
+          MetricValue: "1"
+          DefaultValue: 0
+
+  AppErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${ProjectName}-${Environment}-app-errors"
+      AlarmDescription: Application error rate is high
+      MetricName: AppErrorCount
+      Namespace: !Sub "${ProjectName}/${Environment}"
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 10
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !ImportValue
+          Fn::Sub: "${ProjectName}-${Environment}-SNSTopicArn"
+
+  Dashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: !Sub "${ProjectName}-${Environment}-operations"
+      DashboardBody: !Sub |
+        {
+          "widgets": [
+            {
+              "type": "metric",
+              "properties": {
+                "title": "EC2 CPU Utilization",
+                "metrics": [
+                  ["AWS/EC2", "CPUUtilization", "AutoScalingGroupName", "${ProjectName}-${Environment}-ubuntu-asg"]
+                ],
+                "period": 300,
+                "stat": "Average",
+                "region": "ap-south-1",
+                "view": "timeSeries"
+              }
+            },
+            {
+              "type": "metric",
+              "properties": {
+                "title": "ALB Request Count and Errors",
+                "metrics": [
+                  ["AWS/ApplicationELB", "RequestCount", {"stat": "Sum"}],
+                  ["AWS/ApplicationELB", "HTTPCode_Target_5XX_Count", {"stat": "Sum"}],
+                  ["AWS/ApplicationELB", "HTTPCode_Target_4XX_Count", {"stat": "Sum"}]
+                ],
+                "period": 60,
+                "region": "ap-south-1",
+                "view": "timeSeries"
+              }
+            },
+            {
+              "type": "metric",
+              "properties": {
+                "title": "Custom App Metrics - CPU and Memory",
+                "metrics": [
+                  ["CloudOps/EC2", "cpu_usage_user"],
+                  ["CloudOps/EC2", "mem_used_percent"],
+                  ["CloudOps/EC2", "disk_used_percent"]
+                ],
+                "period": 60,
+                "region": "ap-south-1",
+                "view": "timeSeries"
+              }
+            },
+            {
+              "type": "alarm",
+              "properties": {
+                "title": "All Alarms",
+                "alarms": [
+                  "arn:aws:cloudwatch:ap-south-1:${AWS::AccountId}:alarm:${ProjectName}-${Environment}-ec2-status-check",
+                  "arn:aws:cloudwatch:ap-south-1:${AWS::AccountId}:alarm:${ProjectName}-${Environment}-high-cpu",
+                  "arn:aws:cloudwatch:ap-south-1:${AWS::AccountId}:alarm:${ProjectName}-${Environment}-alb-5xx-errors",
+                  "arn:aws:cloudwatch:ap-south-1:${AWS::AccountId}:alarm:${ProjectName}-${Environment}-app-errors"
+                ]
+              }
+            }
+          ]
+        }
+
+Outputs:
+  DashboardURL:
+    Value: !Sub "https://ap-south-1.console.aws.amazon.com/cloudwatch/home?region=ap-south-1#dashboards:name=${ProjectName}-${Environment}-operations"
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-DashboardURL"
+
+  AppLogGroupName:
+    Value: !Ref AppLogGroup
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-AppLogGroupName"

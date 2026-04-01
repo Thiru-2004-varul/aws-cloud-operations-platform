@@ -14,6 +14,7 @@ jobs:
   validate:
     name: Validate CloudFormation Templates
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
 
@@ -23,7 +24,8 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ap-south-1
 
-      - run: pip install cfn-lint
+      - name: Install cfn-lint
+        run: pip install cfn-lint
 
       - name: Lint all stacks
         run: |
@@ -32,6 +34,8 @@ jobs:
           cfn-lint cloudformation/stacks/compute-stack.yaml || true
           cfn-lint cloudformation/stacks/ssm-stack.yaml || true
           cfn-lint cloudformation/stacks/secrets-stack.yaml || true
+          cfn-lint cloudformation/stacks/backup-stack.yaml || true
+          cfn-lint cloudformation/stacks/monitoring-stack.yaml || true
 
       - name: Validate all stacks with AWS
         run: |
@@ -40,17 +44,20 @@ jobs:
           aws cloudformation validate-template --template-body file://cloudformation/stacks/compute-stack.yaml
           aws cloudformation validate-template --template-body file://cloudformation/stacks/ssm-stack.yaml
           aws cloudformation validate-template --template-body file://cloudformation/stacks/secrets-stack.yaml
+          aws cloudformation validate-template --template-body file://cloudformation/stacks/backup-stack.yaml
+          aws cloudformation validate-template --template-body file://cloudformation/stacks/monitoring-stack.yaml
 
   test-app:
     name: Test Flask Application
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
 
-      - run: pip install flask boto3
+      - name: Install dependencies
+        run: pip install flask boto3 hvac pytest
 
       - name: Test app imports
         run: |
           cd app
           python3 -c "from app import app; print('App imports OK')"
-
