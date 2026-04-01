@@ -7,7 +7,7 @@ ENV="dev"
 
 echo "=========================================="
 echo "  INCIDENT 1 — EC2 INSTANCE FAILURE"
-echo "  $(date)"
+echo "  Start: $(date)"
 echo "=========================================="
 echo ""
 
@@ -31,12 +31,13 @@ echo "Instance    : $INSTANCE_ID"
 echo ""
 
 echo "--- PRE-FAILURE HEALTH CHECK ---"
-curl -s http://$ALB_DNS/health
+PRE_RESPONSE=$(curl -s http://$ALB_DNS/health)
+echo "Response    : $PRE_RESPONSE"
 echo ""
 
-echo "--- SIMULATING FAILURE ---"
-FAILURE_TIME=$(date +%s)
-echo "Stopping instance at $(date)..."
+echo "--- SIMULATING FAILURE at $(date) ---"
+FAILURE_EPOCH=$(date +%s)
+FAILURE_TIME=$(date)
 
 aws ec2 stop-instances \
   --instance-ids $INSTANCE_ID \
@@ -44,25 +45,39 @@ aws ec2 stop-instances \
   --query 'StoppingInstances[0].CurrentState.Name' \
   --output text
 
+echo "Instance $INSTANCE_ID stopped"
 echo ""
+
 echo "Waiting 30 seconds for ALB to detect unhealthy instance..."
 sleep 30
 
 echo ""
 echo "--- TESTING APP DURING FAILURE ---"
-echo "ALB should route to the second healthy instance..."
-HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://$ALB_DNS/health)
-echo "Health check HTTP code: $HTTP_CODE"
+HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+  --max-time 10 http://$ALB_DNS/health || echo "000")
+echo "ALB health check HTTP code : $HTTP_CODE"
 
 if [ "$HTTP_CODE" = "200" ]; then
-  echo "ALB successfully routed to healthy instance"
+  echo "ALB successfully routed to second healthy instance"
 else
-  echo "WARNING: App is not responding — both instances may be down"
+  echo "WARNING: App not responding — check second instance"
 fi
 
 echo ""
-echo "--- RECOVERY ---"
-echo "Starting instance back up..."
+echo "--- ALB TARGET HEALTH ---"
+TG_ARN=$(aws elbv2 describe-target-groups \
+  --region $REGION \
+  --query "TargetGroups[?contains(TargetGroupName,\`$PROJECT\`)].TargetGroupArn" \
+  --output text)
+
+aws elbv2 describe-target-health \
+  --target-group-arn $TG_ARN \
+  --region $REGION \
+  --query 'TargetHealthDescriptions[*].[Target.Id,TargetHealth.State]' \
+  --output table
+
+echo ""
+echo "--- RECOVERY at $(date) ---"
 aws ec2 start-instances \
   --instance-ids $INSTANCE_ID \
   --region $REGION \
@@ -74,19 +89,36 @@ aws ec2 wait instance-running \
   --instance-ids $INSTANCE_ID \
   --region $REGION
 
-RECOVERY_TIME=$(date +%s)
-RTO=$((RECOVERY_TIME - FAILURE_TIME))
+RECOVERY_EPOCH=$(date +%s)
+RECOVERY_TIME=$(date)
+RTO_SECONDS=$((RECOVERY_EPOCH - FAILURE_EPOCH))
+RTO_MINUTES=$((RTO_SECONDS / 60))
+RTO_REMAINING=$((RTO_SECONDS % 60))
+
+echo "Waiting 30 more seconds for ALB health check to pass..."
+sleep 30
 
 echo ""
 echo "--- POST-RECOVERY HEALTH CHECK ---"
-sleep 30
-curl -s http://$ALB_DNS/health
-echo ""
+POST_RESPONSE=$(curl -s http://$ALB_DNS/health)
+echo "Response: $POST_RESPONSE"
 
+echo ""
+echo "--- FINAL ALB TARGET HEALTH ---"
+aws elbv2 describe-target-health \
+  --target-group-arn $TG_ARN \
+  --region $REGION \
+  --query 'TargetHealthDescriptions[*].[Target.Id,TargetHealth.State]' \
+  --output table
+
+echo ""
 echo "=========================================="
-echo "  INCIDENT 1 RESULTS"
-echo "  Failure time    : $(date -d @$FAILURE_TIME)"
-echo "  Recovery time   : $(date -d @$RECOVERY_TIME)"
-echo "  Total RTO       : $RTO seconds ($(($RTO/60)) minutes)"
-echo "  Fill docs/incidents/incident-1-rca.md"
+echo "  INCIDENT 1 RESULTS — COPY THESE NUMBERS"
+echo "  Instance          : $INSTANCE_ID"
+echo "  Failure time      : $FAILURE_TIME"
+echo "  Recovery time     : $RECOVERY_TIME"
+echo "  RTO               : $RTO_SECONDS seconds ($RTO_MINUTES min $RTO_REMAINING sec)"
+echo "  Pre-failure app   : $PRE_RESPONSE"
+echo "  Post-recovery app : $POST_RESPONSE"
+echo "  ALB routing during failure HTTP code: $HTTP_CODE"
 echo "=========================================="
